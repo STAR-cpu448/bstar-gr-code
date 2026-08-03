@@ -18,6 +18,17 @@
       <h1>Upload an Image</h1>
       <p>WEBCODE instantly hosts your image and returns a QR code that opens it.</p>
 
+      <div id="trialCard" class="paywall-card">
+        <div>
+          <p class="paywall-title">3-Day Free Trial</p>
+          <p id="trialText" class="paywall-copy">Start your free trial to create image QR codes with WEBCODE.</p>
+        </div>
+        <div class="paywall-actions">
+          <button id="startTrialButton" class="btn secondary" type="button">Start Free Trial</button>
+          <button id="upgradeButton" class="btn primary hidden" type="button">Upgrade Now</button>
+        </div>
+      </div>
+
       <form id="uploadForm" class="form-row" aria-label="Upload image form">
         <div class="file-input-wrapper">
           <label for="imageInput" style="display:block;font-weight:600;margin-bottom:8px;color:rgba(255,255,255,0.85)">Choose image</label>
@@ -51,6 +62,13 @@
     const qrImage = document.getElementById('qrImage');
     const submitButton = document.getElementById('submitButton');
     const spinner = document.getElementById('spinner');
+    const trialText = document.getElementById('trialText');
+    const startTrialButton = document.getElementById('startTrialButton');
+    const upgradeButton = document.getElementById('upgradeButton');
+    const freeTrialDays = 3;
+    const trialKey = 'webcodeTrialStart';
+
+    const trialStart = localStorage.getItem(trialKey);
 
     function setLoading(loading) {
       if (loading) {
@@ -64,10 +82,69 @@
       }
     }
 
+    function getTrialStart() {
+      return localStorage.getItem(trialKey);
+    }
+
+    function setTrialStart() {
+      localStorage.setItem(trialKey, new Date().toISOString());
+    }
+
+    function getDaysLeft() {
+      const start = getTrialStart();
+      if (!start) return 0;
+      const elapsedMs = Date.now() - new Date(start).getTime();
+      const remaining = freeTrialDays * 24 * 60 * 60 * 1000 - elapsedMs;
+      return remaining > 0 ? Math.ceil(remaining / (24 * 60 * 60 * 1000)) : 0;
+    }
+
+    function renderTrialState() {
+      const started = !!getTrialStart();
+      const daysLeft = getDaysLeft();
+
+      if (!started) {
+        trialText.textContent = `Start your free ${freeTrialDays}-day trial to create QR codes from images.`;
+        upgradeButton.classList.add('hidden');
+        startTrialButton.classList.remove('hidden');
+      } else if (daysLeft > 0) {
+        trialText.textContent = `Your free trial is active. ${daysLeft} day${daysLeft === 1 ? '' : 's'} remaining.`;
+        startTrialButton.classList.add('hidden');
+        upgradeButton.classList.add('hidden');
+      } else {
+        trialText.textContent = 'Your 3-day trial has ended. Upgrade to continue using WEBCODE.';
+        startTrialButton.classList.add('hidden');
+        upgradeButton.classList.remove('hidden');
+      }
+    }
+
+    function canUpload() {
+      const start = getTrialStart();
+      return start && getDaysLeft() > 0;
+    }
+
+    startTrialButton.addEventListener('click', () => {
+      setTrialStart();
+      renderTrialState();
+    });
+
+    upgradeButton.addEventListener('click', () => {
+      window.open('https://github.com/STAR-cpu448/bstar-gr-code', '_blank');
+    });
+
     uploadForm.addEventListener('submit', async (event) => {
       event.preventDefault();
       if (!imageInput.files.length) {
         alert('Please choose an image file.');
+        return;
+      }
+
+      if (!canUpload()) {
+        const start = getTrialStart();
+        if (!start) {
+          alert('Start your free trial first to begin uploading.');
+        } else {
+          alert('Your trial is over. Please upgrade to continue.');
+        }
         return;
       }
 
@@ -99,10 +176,11 @@
       }
     });
 
-    // subtle focus outline for keyboard users
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Tab') document.body.classList.add('keyboard-focus');
     });
+
+    renderTrialState();
   </script>
 </body>
 </html>

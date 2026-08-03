@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const express = require('express');
 const multer = require('multer');
 const QRCode = require('qrcode');
@@ -8,7 +9,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const uploadsDir = process.env.UPLOAD_DIR
   ? path.resolve(process.env.UPLOAD_DIR)
-  : path.join(__dirname, 'uploads');
+  : path.join(os.tmpdir(), 'webcode-uploads');
 
 if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
