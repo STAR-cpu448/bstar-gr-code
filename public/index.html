@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Image to QR Code</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main>
+    <h1>Upload an Image and Get a QR Code</h1>
+    <p>Upload an image and get a QR code that links to your image online.</p>
+
+    <form id="uploadForm">
+      <label>
+        Choose image:
+        <input type="file" id="imageInput" name="image" accept="image/*" required />
+      </label>
+      <button type="submit">Upload & Generate QR</button>
+    </form>
+
+    <section id="result" class="hidden">
+      <h2>Generated QR Code</h2>
+      <div class="card">
+        <p><strong>Image URL:</strong> <a id="imageLink" target="_blank" rel="noreferrer">--</a></p>
+        <div class="qr-preview">
+          <img id="qrImage" alt="QR code" />
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const uploadForm = document.getElementById('uploadForm');
+    const imageInput = document.getElementById('imageInput');
+    const resultSection = document.getElementById('result');
+    const imageLink = document.getElementById('imageLink');
+    const qrImage = document.getElementById('qrImage');
+
+    uploadForm.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!imageInput.files.length) {
+        alert('Please choose an image file.');
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append('image', imageInput.files[0]);
+
+      const response = await fetch('/upload', {
+        method: 'POST',
+        body: formData
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(data.error || 'Upload failed.');
+        return;
+      }
+
+      imageLink.href = data.imageUrl;
+      imageLink.textContent = data.imageUrl;
+      qrImage.src = data.qrDataUrl;
+      resultSection.classList.remove('hidden');
+    });
+  </script>
+</body>
+</html>
