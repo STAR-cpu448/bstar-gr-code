@@ -1,6 +1,6 @@
-# QR Image Server
+# WEBCODE — QR Image Server
 
-This project lets you upload an image and then generates a QR code that points to the uploaded image URL.
+WEBCODE lets you upload an image and then generates a QR code that points to the uploaded image URL.
 
 ## How it works
 
@@ -31,17 +31,40 @@ http://localhost:3000
 
 ## Keep it online
 
-To keep this available online all the time, deploy to a hosting platform such as:
+This app is a Node.js server and is best deployed to a service that supports backend Node apps.
 
-- Vercel
-- Render
-- Railway
-- Fly.io
-- Heroku
+### Deploy to Render
 
-Just point the platform to this repository and use the default `npm start` command.
+1. Go to https://render.com and sign in.
+2. Click **New** → **Web Service**.
+3. Connect your GitHub account and select the `STAR-cpu448/bstar-gr-code` repository.
+4. Set the branch to `main`.
+5. Set the build command to:
 
-## Notes
+```bash
+npm install
+```
+
+6. Set the start command to:
+
+```bash
+npm start
+```
+
+7. Create the service.
+
+Render will build the app and provide a public URL where your image upload + QR generator will run.
+
+### Notes
+
+- Uploaded images are stored in `uploads/` on the server filesystem.
+- The generated QR code points to `https://<your-host>/image/<filename>`.
+- For long-term availability, keep the Render service running.
+
+## Alternative hosts
+
+- Railway, Heroku, or Fly.io also support this Node.js app.
+
 
 - Uploaded images are stored in `uploads/`.
 - The generated QR code points to `https://<your-host>/image/<filename>`.

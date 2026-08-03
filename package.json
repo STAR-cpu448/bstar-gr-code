@@ -1,5 +1,5 @@
 {
-  "name": "qr-image-server",
+  "name": "WEBCODE",
   "version": "1.0.0",
   "description": "Image upload service that returns a QR code for the uploaded image URL.",
   "main": "server.js",

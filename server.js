@@ -36,6 +36,18 @@ const upload = multer({
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+app.get('/sitemap.xml', (req, res) => {
+  const host = `${req.protocol}://${req.get('host')}`;
+  const urls = [
+    `${host}/`,
+    `${host}/` // root only; uploaded images are dynamic and not listed here
+  ];
+
+  const urlset = urls.map(u => `    <url>\n      <loc>${u}</loc>\n    </url>`).join('\n');
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urlset}\n</urlset>`;
+  res.type('application/xml').send(xml);
+});
+
 app.get('/image/:name', (req, res) => {
   const filePath = path.join(uploadsDir, req.params.name);
   if (!fs.existsSync(filePath)) {
