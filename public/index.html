@@ -13,26 +13,33 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <main>
-    <h1>Upload an Image and Get a QR Code</h1>
-    <p>Upload an image and get a QR code that links to your image online.</p>
+  <main class="app">
+    <section class="panel">
+      <h1>Upload an Image</h1>
+      <p>WEBCODE instantly hosts your image and returns a QR code that opens it.</p>
 
-    <form id="uploadForm">
-      <label>
-        Choose image:
-        <input type="file" id="imageInput" name="image" accept="image/*" required />
-      </label>
-      <button type="submit">Upload & Generate QR</button>
-    </form>
+      <form id="uploadForm" class="form-row" aria-label="Upload image form">
+        <div class="file-input-wrapper">
+          <label for="imageInput" style="display:block;font-weight:600;margin-bottom:8px;color:rgba(255,255,255,0.85)">Choose image</label>
+          <input type="file" id="imageInput" name="image" accept="image/*" required />
+        </div>
 
-    <section id="result" class="hidden">
-      <h2>Generated QR Code</h2>
-      <div class="card">
-        <p><strong>Image URL:</strong> <a id="imageLink" target="_blank" rel="noreferrer">--</a></p>
+        <div class="controls">
+          <button id="submitButton" class="btn primary" type="submit">Upload & Generate QR</button>
+          <div id="spinner" class="spinner hidden" aria-hidden="true"></div>
+        </div>
+      </form>
+
+      <section id="result" class="result-card hidden" aria-live="polite">
+        <h2 style="margin-top:0;color:rgba(255,255,255,0.9)">Generated QR Code</h2>
         <div class="qr-preview">
           <img id="qrImage" alt="QR code" />
+          <div style="flex:1">
+            <p style="margin:0 0 8px 0;color:rgba(255,255,255,0.8)"><strong>Image URL:</strong></p>
+            <a id="imageLink" class="meta-link" target="_blank" rel="noreferrer">--</a>
+          </div>
         </div>
-      </div>
+      </section>
     </section>
   </main>
 
@@ -42,6 +49,20 @@
     const resultSection = document.getElementById('result');
     const imageLink = document.getElementById('imageLink');
     const qrImage = document.getElementById('qrImage');
+    const submitButton = document.getElementById('submitButton');
+    const spinner = document.getElementById('spinner');
+
+    function setLoading(loading) {
+      if (loading) {
+        submitButton.disabled = true;
+        submitButton.classList.add('is-loading');
+        spinner.classList.remove('hidden');
+      } else {
+        submitButton.disabled = false;
+        submitButton.classList.remove('is-loading');
+        spinner.classList.add('hidden');
+      }
+    }
 
     uploadForm.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -50,25 +71,37 @@
         return;
       }
 
-      const formData = new FormData();
-      formData.append('image', imageInput.files[0]);
+      setLoading(true);
 
-      const response = await fetch('/upload', {
-        method: 'POST',
-        body: formData
-      });
+      try {
+        const formData = new FormData();
+        formData.append('image', imageInput.files[0]);
 
-      const data = await response.json();
+        const response = await fetch('/upload', {
+          method: 'POST',
+          body: formData
+        });
 
-      if (!response.ok) {
-        alert(data.error || 'Upload failed.');
-        return;
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Upload failed');
+        }
+
+        imageLink.href = data.imageUrl;
+        imageLink.textContent = data.imageUrl;
+        qrImage.src = data.qrDataUrl;
+        resultSection.classList.remove('hidden');
+      } catch (err) {
+        alert(err.message || 'Upload failed.');
+      } finally {
+        setLoading(false);
       }
+    });
 
-      imageLink.href = data.imageUrl;
-      imageLink.textContent = data.imageUrl;
-      qrImage.src = data.qrDataUrl;
-      resultSection.classList.remove('hidden');
+    // subtle focus outline for keyboard users
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Tab') document.body.classList.add('keyboard-focus');
     });
   </script>
 </body>
