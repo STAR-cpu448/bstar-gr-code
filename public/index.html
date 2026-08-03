@@ -21,11 +21,26 @@
       <div id="trialCard" class="paywall-card">
         <div>
           <p class="paywall-title">3-Day Free Trial</p>
-          <p id="trialText" class="paywall-copy">Start your free trial to create image QR codes with WEBCODE.</p>
+          <p id="trialText" class="paywall-copy">Start your free trial to create QR codes from images.</p>
         </div>
         <div class="paywall-actions">
           <button id="startTrialButton" class="btn secondary" type="button">Start Free Trial</button>
-          <button id="upgradeButton" class="btn primary hidden" type="button">Upgrade Now</button>
+          <button id="upgradeButton" class="btn primary hidden" type="button">Pay KSh 99</button>
+        </div>
+      </div>
+
+      <div class="input-grid">
+        <div class="input-field">
+          <label for="emailInput">Your email</label>
+          <input id="emailInput" type="email" placeholder="you@example.com" />
+        </div>
+        <div class="input-field">
+          <label for="phoneInput">Phone for M-Pesa</label>
+          <input id="phoneInput" type="tel" placeholder="+2547XXXXXXXX" />
+        </div>
+        <div class="input-field fullwidth">
+          <label for="adminKeyInput">Admin bypass key (optional)</label>
+          <input id="adminKeyInput" type="password" placeholder="Secret admin key" />
         </div>
       </div>
 
@@ -40,6 +55,21 @@
           <div id="spinner" class="spinner hidden" aria-hidden="true"></div>
         </div>
       </form>
+
+      <div id="paymentModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+        <div class="modal-sheet">
+          <button id="closeModal" class="modal-close" aria-label="Close payment modal">×</button>
+          <div class="modal-header">
+            <p id="modalTitle">Unlock WEBCODE</p>
+            <p class="modal-description">Permanent access for KSh 99. Pay with local M-Pesa or international card.</p>
+          </div>
+          <div class="modal-price">KSh 99</div>
+          <button id="payButton" class="btn primary fullwidth" type="button">Pay with Paystack</button>
+          <p class="modal-note">After payment, your device will automatically be unlocked by our webhook.</p>
+          <p class="modal-status hidden" id="modalStatus"></p>
+          <button id="verifyButton" class="btn secondary fullwidth hidden" type="button">Verify Payment</button>
+        </div>
+      </div>
 
       <section id="result" class="result-card hidden" aria-live="polite">
         <h2 style="margin-top:0;color:rgba(255,255,255,0.9)">Generated QR Code</h2>
@@ -65,10 +95,37 @@
     const trialText = document.getElementById('trialText');
     const startTrialButton = document.getElementById('startTrialButton');
     const upgradeButton = document.getElementById('upgradeButton');
+    const emailInput = document.getElementById('emailInput');
+    const phoneInput = document.getElementById('phoneInput');
+    const adminKeyInput = document.getElementById('adminKeyInput');
+    const paymentModal = document.getElementById('paymentModal');
+    const closeModal = document.getElementById('closeModal');
+    const payButton = document.getElementById('payButton');
+    const verifyButton = document.getElementById('verifyButton');
+    const modalStatus = document.getElementById('modalStatus');
     const freeTrialDays = 3;
+    const fingerprintKey = 'webcodeFingerprint';
     const trialKey = 'webcodeTrialStart';
 
-    const trialStart = localStorage.getItem(trialKey);
+    function createFingerprint() {
+      const existing = localStorage.getItem(fingerprintKey);
+      if (existing) return existing;
+      const data = [
+        navigator.userAgent,
+        navigator.language,
+        screen.width,
+        screen.height,
+        screen.colorDepth,
+        navigator.platform,
+        navigator.hardwareConcurrency || 0,
+        Intl.DateTimeFormat().resolvedOptions().timeZone
+      ].join('|');
+      const hash = btoa(unescape(encodeURIComponent(data))).slice(0, 32);
+      localStorage.setItem(fingerprintKey, hash);
+      return hash;
+    }
+
+    const fingerprint = createFingerprint();
 
     function setLoading(loading) {
       if (loading) {
@@ -82,53 +139,139 @@
       }
     }
 
-    function getTrialStart() {
-      return localStorage.getItem(trialKey);
+    function showModal() {
+      paymentModal.classList.remove('hidden');
+      modalStatus.classList.add('hidden');
+      verifyButton.classList.add('hidden');
     }
 
-    function setTrialStart() {
-      localStorage.setItem(trialKey, new Date().toISOString());
+    function hideModal() {
+      paymentModal.classList.add('hidden');
     }
 
-    function getDaysLeft() {
-      const start = getTrialStart();
-      if (!start) return 0;
-      const elapsedMs = Date.now() - new Date(start).getTime();
-      const remaining = freeTrialDays * 24 * 60 * 60 * 1000 - elapsedMs;
-      return remaining > 0 ? Math.ceil(remaining / (24 * 60 * 60 * 1000)) : 0;
+    async function getTrialState() {
+      const params = new URLSearchParams({
+        fingerprint,
+        email: emailInput.value,
+        phone: phoneInput.value,
+        adminKey: adminKeyInput.value
+      });
+      const response = await fetch(`/api/trial/status?${params.toString()}`);
+      return response.json();
     }
 
-    function renderTrialState() {
-      const started = !!getTrialStart();
-      const daysLeft = getDaysLeft();
+    async function renderTrialState(state) {
+      if (!state) {
+        state = await getTrialState();
+      }
 
-      if (!started) {
-        trialText.textContent = `Start your free ${freeTrialDays}-day trial to create QR codes from images.`;
-        upgradeButton.classList.add('hidden');
-        startTrialButton.classList.remove('hidden');
-      } else if (daysLeft > 0) {
-        trialText.textContent = `Your free trial is active. ${daysLeft} day${daysLeft === 1 ? '' : 's'} remaining.`;
+      if (state.admin || state.paid || state.state === 'paid') {
+        trialText.textContent = 'Your device is unlocked. You have permanent access.';
         startTrialButton.classList.add('hidden');
         upgradeButton.classList.add('hidden');
-      } else {
+        return;
+      }
+
+      if (state.state === 'trial') {
+        trialText.textContent = `Your free trial is active. ${state.daysLeft} day${state.daysLeft === 1 ? '' : 's'} remaining.`;
+        startTrialButton.classList.add('hidden');
+        upgradeButton.classList.add('hidden');
+        return;
+      }
+
+      if (state.state === 'expired') {
         trialText.textContent = 'Your 3-day trial has ended. Upgrade to continue using WEBCODE.';
         startTrialButton.classList.add('hidden');
         upgradeButton.classList.remove('hidden');
+        return;
       }
+
+      trialText.textContent = `Start your free ${freeTrialDays}-day trial to create QR codes from images.`;
+      startTrialButton.classList.remove('hidden');
+      upgradeButton.classList.add('hidden');
     }
 
-    function canUpload() {
-      const start = getTrialStart();
-      return start && getDaysLeft() > 0;
+    async function startTrial() {
+      const body = {
+        fingerprint,
+        email: emailInput.value,
+        phone: phoneInput.value,
+        adminKey: adminKeyInput.value
+      };
+      const response = await fetch('/api/trial/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const state = await response.json();
+      renderTrialState(state);
     }
 
-    startTrialButton.addEventListener('click', () => {
-      setTrialStart();
-      renderTrialState();
+    async function createPayment() {
+      const body = {
+        fingerprint,
+        email: emailInput.value,
+        phone: phoneInput.value || '0742562742'
+      };
+      const response = await fetch('/api/payments/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create payment.');
+      }
+      return data;
+    }
+
+    startTrialButton.addEventListener('click', async () => {
+      startTrialButton.disabled = true;
+      try {
+        await startTrial();
+      } catch (err) {
+        alert(err.message || 'Could not start trial');
+      } finally {
+        startTrialButton.disabled = false;
+      }
     });
 
-    upgradeButton.addEventListener('click', () => {
-      window.open('https://github.com/STAR-cpu448/bstar-gr-code', '_blank');
+    upgradeButton.addEventListener('click', showModal);
+    closeModal.addEventListener('click', hideModal);
+
+    payButton.addEventListener('click', async () => {
+      payButton.disabled = true;
+      modalStatus.classList.remove('hidden');
+      modalStatus.textContent = 'Initializing payment...';
+      try {
+        const data = await createPayment();
+        modalStatus.textContent = 'Payment initialized. Redirecting to secure checkout...';
+        window.open(data.authorization_url, '_blank');
+        verifyButton.classList.remove('hidden');
+      } catch (err) {
+        modalStatus.textContent = err.message;
+      } finally {
+        payButton.disabled = false;
+      }
+    });
+
+    verifyButton.addEventListener('click', async () => {
+      verifyButton.disabled = true;
+      modalStatus.textContent = 'Checking payment status...';
+      try {
+        const state = await getTrialState();
+        await renderTrialState(state);
+        if (state.paid || state.admin || state.state === 'paid') {
+          modalStatus.textContent = 'Payment confirmed — access unlocked.';
+          setTimeout(hideModal, 1200);
+        } else {
+          modalStatus.textContent = 'Payment not confirmed yet. Please try again after completing checkout.';
+        }
+      } catch (err) {
+        modalStatus.textContent = err.message || 'Verification failed.';
+      } finally {
+        verifyButton.disabled = false;
+      }
     });
 
     uploadForm.addEventListener('submit', async (event) => {
@@ -138,29 +281,28 @@
         return;
       }
 
-      if (!canUpload()) {
-        const start = getTrialStart();
-        if (!start) {
-          alert('Start your free trial first to begin uploading.');
-        } else {
-          alert('Your trial is over. Please upgrade to continue.');
-        }
+      const state = await getTrialState();
+      if (!(state.admin || state.paid || state.state === 'trial')) {
+        alert('Your trial is over. Please pay to continue using WEBCODE.');
+        showModal();
         return;
       }
 
       setLoading(true);
+      const formData = new FormData();
+      formData.append('image', imageInput.files[0]);
+      formData.append('fingerprint', fingerprint);
+      formData.append('email', emailInput.value);
+      formData.append('phone', phoneInput.value);
+      formData.append('adminKey', adminKeyInput.value);
 
       try {
-        const formData = new FormData();
-        formData.append('image', imageInput.files[0]);
-
         const response = await fetch('/upload', {
           method: 'POST',
           body: formData
         });
 
         const data = await response.json();
-
         if (!response.ok) {
           throw new Error(data.error || 'Upload failed');
         }
