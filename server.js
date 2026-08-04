@@ -12,392 +12,130 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const uploadsDir = path.join(os.tmpdir(), 'webcode-uploads');
 const recordsPath = path.join(os.tmpdir(), 'webcode-records.json');
-const TRIAL_MS = 72 * 60 * 60 * 1000;
+const TRIAL_MS = 3 * 24 * 60 * 60 * 1000; // 3 days
 
 function loadRecords() {
   try {
     if (!fs.existsSync(recordsPath)) return { devices: {} };
     return JSON.parse(fs.readFileSync(recordsPath, 'utf8'));
-  } catch (error) {
-    console.warn('Failed to load records:', error.message);
+  } catch (err) {
+    console.warn('Could not read records:', err.message);
     return { devices: {} };
   }
 }
 
-function saveRecords(records) {
-  fs.writeFileSync(recordsPath, JSON.stringify(records, null, 2));
+function saveRecords(recs) {
+  try { fs.writeFileSync(recordsPath, JSON.stringify(recs, null, 2)); } catch (e) { console.warn('Save failed', e.message); }
 }
 
 const records = loadRecords();
 
-function getClientIp(req) {
-  const forwarded = req.headers['x-forwarded-for'];
-  if (forwarded) {
-    return forwarded.split(',')[0].trim();
-  }
-  return req.ip;
-}
-
-function getBrowserFingerprint(req) {
-  return req.body.fingerprint || req.query.fingerprint || 'unknown-fingerprint';
-}
-
-function createDeviceHash(ip, fingerprint) {
-  return crypto.createHash('sha256').update(`${ip}|${fingerprint}`).digest('hex');
-}
-
-function getDeviceRecord(deviceHash) {
-  return records.devices[deviceHash];
-}
-
-function updateDeviceRecord(deviceHash, update) {
-  const existing = getDeviceRecord(deviceHash) || {};
-  records.devices[deviceHash] = { ...existing, ...update };
-  saveRecords(records);
-  return records.devices[deviceHash];
-}
-
-const storage = multer.diskStorage({
-  destination: uploadsDir,
-  filename: (req, file, cb) => {
-    const timestamp = Date.now();
-    const safeName = file.originalname.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9._-]/g, '');
-    cb(null, `${timestamp}-${safeName}`);
-  }
-});
-
-const upload = multer({
-  storage,
-  fileFilter: (req, file, cb) => {
-    if (!file.mimetype.startsWith('image/')) {
-      return cb(new Error('Only image files are allowed'));
-    }
-    cb(null, true);
-  },
-  limits: {
-    fileSize: 5 * 1024 * 1024
-  }
-});
-
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'public')));
-
-function isAdmin(req) {
-  const email = req.body.email || req.query.email || ''; 
-  const adminEmail = process.env.ADMIN_EMAIL;
-  const adminKey = req.body.adminKey || req.query.adminKey || req.headers['x-admin-key'] || '';
-  const bypassKey = process.env.ADMIN_BYPASS_KEY;
-  return (!!adminEmail && email.toLowerCase() === adminEmail.toLowerCase()) || (!!bypassKey && adminKey === bypassKey);
-}
-
-function trialStatusFor(record) {
-  if (!record) return { state: 'new', daysLeft: 0 };
-  if (record.admin || record.paid) return { state: 'paid', daysLeft: 0 };
-  if (!record.firstAccessDate) return { state: 'new', daysLeft: 0 };
-  const elapsed = Date.now() - new Date(record.firstAccessDate).getTime();
-  if (elapsed <= TRIAL_MS) {
-    return { state: 'trial', daysLeft: Math.ceil((TRIAL_MS - elapsed) / (24 * 60 * 60 * 1000)) };
-  }
-  return { state: 'expired', daysLeft: 0 };
-}
-
-function ensureUploadsDir() {
-  if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-  }
-}
-
+function ensureUploadsDir(){ if(!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true }); }
 ensureUploadsDir();
 
-app.get('/sitemap.xml', (req, res) => {
-  const host = `${req.protocol}://${req.get('host')}`;
-  const urls = [
-    `${host}/`,
-    `${host}/` // root only; uploaded images are dynamic and not listed here
-  ];
+const storage = multer.diskStorage({ destination: uploadsDir, filename: (req,file,cb)=>{
+  const safe = file.originalname.replace(/\s+/g,'-').replace(/[^a-zA-Z0-9._-]/g,'');
+  cb(null, `${Date.now()}-${safe}`);
+}});
+const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 }, fileFilter: (req,file,cb)=>{
+  if(!file.mimetype.startsWith('image/')) return cb(new Error('only images'));
+  cb(null,true);
+}});
 
-  const urlset = urls.map(u => `    <url>\n      <loc>${u}</loc>\n    </url>`).join('\n');
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${urlset}\n</urlset>`;
-  res.type('application/xml').send(xml);
+app.use(express.static(path.join(__dirname,'public')));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+function getClientIp(req){ const f = req.headers['x-forwarded-for']; return f? f.split(',')[0].trim() : (req.ip || req.connection.remoteAddress || 'unknown'); }
+function createDeviceHash(ip, fingerprint){ return crypto.createHash('sha256').update(`${ip}|${fingerprint}`).digest('hex'); }
+function getDevice(deviceHash){ return records.devices[deviceHash]; }
+function updateDevice(deviceHash, patch){ const curr = getDevice(deviceHash) || {}; records.devices[deviceHash] = { ...curr, ...patch }; saveRecords(records); return records.devices[deviceHash]; }
+function trialStatusFor(rec){ if(!rec) return { state:'new', daysLeft:0 }; if(rec.admin||rec.paid) return { state:'paid', daysLeft:0 }; if(!rec.firstAccessDate) return { state:'new', daysLeft:0 }; const elapsed = Date.now() - new Date(rec.firstAccessDate).getTime(); if(elapsed <= TRIAL_MS) return { state:'trial', daysLeft: Math.ceil((TRIAL_MS - elapsed)/(24*60*60*1000)) }; return { state:'expired', daysLeft:0 } }
+
+function isAdminBypass(req){ const email = (req.body.email||req.query.email||'').toLowerCase(); const adminEmail = process.env.ADMIN_EMAIL; const bypassKey = process.env.ADMIN_BYPASS_KEY; const providedKey = req.body.adminKey || req.query.adminKey || req.headers['x-admin-key'] || ''; return (!!adminEmail && email === adminEmail.toLowerCase()) || (!!bypassKey && providedKey === bypassKey); }
+
+app.get('/api/trial/status', (req,res)=>{
+  const fingerprint = req.query.fingerprint || 'unknown'; const email = (req.query.email||'').toLowerCase(); const phone = req.query.phone||''; const ip = getClientIp(req); const deviceHash = createDeviceHash(ip, fingerprint); const rec = getDevice(deviceHash);
+  if(rec){ const s = trialStatusFor(rec); return res.json({ state:s.state, daysLeft:s.daysLeft, paid: !!rec.paid, admin: !!rec.admin, email: rec.email||email, phone: rec.phone||phone }); }
+  // admin auto-unlock if env set
+  if( (!!process.env.ADMIN_EMAIL && email === process.env.ADMIN_EMAIL.toLowerCase()) || (!!process.env.ADMIN_BYPASS_KEY && (req.query.adminKey === process.env.ADMIN_BYPASS_KEY || req.headers['x-admin-key'] === process.env.ADMIN_BYPASS_KEY)) ){
+    updateDevice(deviceHash, { admin:true, paid:true, firstAccessDate: new Date().toISOString(), email, phone });
+    return res.json({ state:'paid', daysLeft:0, paid:true, admin:true, email, phone });
+  }
+  return res.json({ state:'new', daysLeft:0, paid:false, admin:false, email, phone });
 });
 
-app.get('/image/:name', (req, res) => {
-  const filePath = path.join(uploadsDir, req.params.name);
-  if (!fs.existsSync(filePath)) {
-    return res.status(404).send('Image not found');
-  }
-  res.sendFile(filePath);
+app.post('/api/trial/start', (req,res)=>{
+  const { fingerprint='', email='', phone='' } = req.body; const ip = getClientIp(req); const deviceHash = createDeviceHash(ip, fingerprint); if(isAdminBypass(req)){ updateDevice(deviceHash, { admin:true, paid:true, firstAccessDate: new Date().toISOString(), email: (email||'').toLowerCase(), phone }); return res.json({ state:'paid', daysLeft:0, paid:true, admin:true }); }
+  const rec = getDevice(deviceHash) || {}; if(!rec.firstAccessDate){ updateDevice(deviceHash, { firstAccessDate: new Date().toISOString(), email: (email||'').toLowerCase(), phone, fingerprint, ip, paid:false, admin:false }); }
+  const updated = getDevice(deviceHash); const s = trialStatusFor(updated); return res.json({ state: s.state, daysLeft: s.daysLeft, paid: !!updated.paid });
 });
 
-app.get('/api/trial/status', (req, res) => {
-  const fingerprint = req.query.fingerprint || 'unknown';
-  const email = (req.query.email || '').toLowerCase();
-  const phone = req.query.phone || '';
-  const adminKey = req.query.adminKey || req.headers['x-admin-key'] || '';
-  const ip = getClientIp(req);
-  const deviceHash = createDeviceHash(ip, fingerprint);
-  const record = getDeviceRecord(deviceHash);
-
-  if (record) {
-    const status = trialStatusFor(record);
-    return res.json({
-      state: status.state,
-      daysLeft: status.daysLeft,
-      paid: record.paid || record.admin,
-      admin: record.admin || false,
-      email: record.email || email,
-      phone: record.phone || phone
-    });
-  }
-
-  const isAdminUser = (!!process.env.ADMIN_EMAIL && email === process.env.ADMIN_EMAIL.toLowerCase()) || (!!process.env.ADMIN_BYPASS_KEY && adminKey === process.env.ADMIN_BYPASS_KEY);
-  if (isAdminUser) {
-    updateDeviceRecord(deviceHash, { admin: true, paid: true, email, phone, firstAccessDate: new Date().toISOString() });
-    return res.json({ state: 'paid', daysLeft: 0, paid: true, admin: true, email, phone });
-  }
-
-  res.json({ state: 'new', daysLeft: 0, paid: false, admin: false, email, phone });
-});
-
-app.post('/api/trial/start', (req, res) => {
-  const { fingerprint, email, phone } = req.body;
-  const ip = getClientIp(req);
-  const deviceHash = createDeviceHash(ip, fingerprint || 'unknown');
-  const record = getDeviceRecord(deviceHash) || {};
-  const isAdminUser = isAdmin(req);
-
-  if (isAdminUser) {
-    updateDeviceRecord(deviceHash, {
-      admin: true,
-      paid: true,
-      email: (email || '').toLowerCase(),
-      phone: phone || '',
-      firstAccessDate: new Date().toISOString()
-    });
-    return res.json({ state: 'paid', daysLeft: 0, paid: true, admin: true });
-  }
-
-  if (!record.firstAccessDate) {
-    updateDeviceRecord(deviceHash, {
-      firstAccessDate: new Date().toISOString(),
-      email: (email || '').toLowerCase(),
-      phone: phone || '',
-      fingerprint: fingerprint || 'unknown',
-      ip,
-      paid: false,
-      admin: false
-    });
-  }
-
-  const updated = getDeviceRecord(deviceHash);
-  const status = trialStatusFor(updated);
-  res.json({ state: status.state, daysLeft: status.daysLeft, paid: false, admin: false });
-});
-
-app.get('/api/trial/status', (req, res) => {
-  const fingerprint = req.query.fingerprint || 'unknown';
-  const email = (req.query.email || '').toLowerCase();
-  const phone = req.query.phone || '';
-  const adminKey = req.query.adminKey || req.headers['x-admin-key'] || '';
-  const ip = getClientIp(req);
-  const deviceHash = createDeviceHash(ip, fingerprint);
-  const record = getDeviceRecord(deviceHash);
-
-  if (record) {
-    const status = trialStatusFor(record);
-    return res.json({
-      state: status.state,
-      daysLeft: status.daysLeft,
-      paid: record.paid || record.admin,
-      admin: record.admin || false,
-      email: record.email || email,
-      phone: record.phone || phone
-    });
-  }
-
-  const isAdminUser = (!!process.env.ADMIN_EMAIL && email === process.env.ADMIN_EMAIL.toLowerCase()) || (!!process.env.ADMIN_BYPASS_KEY && adminKey === process.env.ADMIN_BYPASS_KEY);
-  if (isAdminUser) {
-    updateDeviceRecord(deviceHash, { admin: true, paid: true, email, phone, firstAccessDate: new Date().toISOString() });
-    return res.json({ state: 'paid', daysLeft: 0, paid: true, admin: true, email, phone });
-  }
-
-  res.json({ state: 'new', daysLeft: 0, paid: false, admin: false, email, phone });
-});
-
-app.post('/api/trial/start', (req, res) => {
-  const { fingerprint, email, phone } = req.body;
-  const ip = getClientIp(req);
-  const deviceHash = createDeviceHash(ip, fingerprint || 'unknown');
-  const record = getDeviceRecord(deviceHash) || {};
-  const isAdminUser = isAdmin(req);
-
-  if (isAdminUser) {
-    updateDeviceRecord(deviceHash, {
-      admin: true,
-      paid: true,
-      email: (email || '').toLowerCase(),
-      phone: phone || '',
-      firstAccessDate: new Date().toISOString()
-    });
-    return res.json({ state: 'paid', daysLeft: 0, paid: true, admin: true });
-  }
-
-  if (!record.firstAccessDate) {
-    updateDeviceRecord(deviceHash, {
-      firstAccessDate: new Date().toISOString(),
-      email: (email || '').toLowerCase(),
-      phone: phone || '',
-      fingerprint: fingerprint || 'unknown',
-      ip,
-      paid: false,
-      admin: false
-    });
-  }
-
-  const updated = getDeviceRecord(deviceHash);
-  const status = trialStatusFor(updated);
-  res.json({ state: status.state, daysLeft: status.daysLeft, paid: false, admin: false });
-});
-
-app.post('/api/payments/create', async (req, res) => {
-  const { email, phone, fingerprint } = req.body;
-  const ip = getClientIp(req);
-  const deviceHash = createDeviceHash(ip, fingerprint || 'unknown');
-  const record = getDeviceRecord(deviceHash) || {};
-
-  if (record.paid || record.admin) {
-    return res.json({ paid: true, message: 'Device already unlocked.' });
-  }
+// payment initialization (Paystack optional)
+app.post('/api/payments/create', async (req,res)=>{
+  const { fingerprint='', email='', phone='', amount=9900 } = req.body; const ip = getClientIp(req); const deviceHash = createDeviceHash(ip, fingerprint); const rec = getDevice(deviceHash) || {};
+  if(rec.paid || rec.admin) return res.json({ paid:true, message:'already unlocked' });
 
   const paystackSecret = process.env.PAYSTACK_SECRET;
-  if (!paystackSecret) {
-    return res.status(500).json({ error: 'Payment provider not configured.' });
+  const reference = `WEBCODE-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+
+  if(paystackSecret){
+    try{
+      const payload = { email: email||`user@webcode.local`, amount, metadata:{ deviceHash, phone }, reference };
+      const r = await fetch('https://api.paystack.co/transaction/initialize', { method:'POST', headers: { Authorization: `Bearer ${paystackSecret}`, 'Content-Type':'application/json' }, body: JSON.stringify(payload) });
+      const j = await r.json();
+      if(!r.ok) return res.status(500).json({ error: j.message || 'init failed', details:j });
+      updateDevice(deviceHash, { email:(email||'').toLowerCase(), phone, reference, paid:false, firstAccessDate: rec.firstAccessDate || new Date().toISOString() });
+      return res.json({ authorization_url: j.data.authorization_url, reference: j.data.reference });
+    }catch(err){ return res.status(500).json({ error: err.message }); }
   }
 
-  const reference = `WEBCODE-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-  const requestBody = {
-    email: email || 'unknown@webcode.com',
-    amount: 9900,
-    currency: 'KES',
-    channels: ['card', 'mobile_money'],
-    metadata: {
-      phone: phone || '0742562742',
-      deviceHash,
-      payoutPhone: '0742562742'
-    },
-    reference
-  };
-
-  const response = await fetch('https://api.paystack.co/transaction/initialize', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${paystackSecret}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify(requestBody)
-  });
-
-  const data = await response.json();
-  if (!response.ok || !data.status) {
-    return res.status(500).json({ error: data.message || 'Payment initialization failed', details: data });
-  }
-
-  updateDeviceRecord(deviceHash, {
-    email: (email || '').toLowerCase(),
-    phone: phone || '',
-    firstAccessDate: record.firstAccessDate || new Date().toISOString(),
-    lastSeen: new Date().toISOString(),
-    paid: false,
-    admin: record.admin || false,
-    fingerprint: fingerprint || 'unknown',
-    ip,
-    reference
-  });
-
-  res.json({
-    authorization_url: data.data.authorization_url,
-    reference: data.data.reference,
-    amount: requestBody.amount,
-    email: requestBody.email,
-    phone: requestBody.phone
-  });
+  // fallback: return a mock URL so devs can test without keys
+  updateDevice(deviceHash, { email:(email||'').toLowerCase(), phone, reference, paid:false, firstAccessDate: rec.firstAccessDate || new Date().toISOString() });
+  return res.json({ authorization_url: `/mock-pay?ref=${encodeURIComponent(reference)}&device=${encodeURIComponent(deviceHash)}`, reference });
 });
 
-app.post('/api/payments/webhook', (req, res) => {
-  const event = req.body;
-  const secret = process.env.PAYSTACK_SECRET || '';
-  const signature = req.headers['x-paystack-signature'];
-
-  if (secret && signature) {
-    const hash = crypto.createHmac('sha512', secret).update(JSON.stringify(req.body)).digest('hex');
-    if (hash !== signature) {
-      return res.status(401).json({ error: 'Invalid signature' });
+// Paystack webhook (expects raw body to validate signature)
+app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), (req,res)=>{
+  const secret = process.env.PAYSTACK_SECRET || ''; const sig = req.headers['x-paystack-signature'];
+  if(secret && sig){ const hash = crypto.createHmac('sha512', secret).update(req.body).digest('hex'); if(hash !== sig) return res.status(401).send('invalid signature'); }
+  try{
+    const payload = JSON.parse(req.body.toString('utf8'));
+    const event = payload.event; const data = payload.data;
+    if(event === 'charge.success' && data && data.reference){
+      const ref = data.reference; const entry = Object.entries(records.devices).find(([,r]) => r.reference === ref);
+      if(entry){ const [deviceHash] = entry; updateDevice(deviceHash, { paid:true, paymentDate: new Date().toISOString() }); }
     }
-  }
-
-  const { event: eventType, data } = event;
-
-  if (eventType === 'charge.success' || eventType === 'transfer.success') {
-    const reference = data.reference;
-    const deviceEntry = Object.entries(records.devices).find(([, record]) => record.reference === reference);
-    if (deviceEntry) {
-      const [deviceHash] = deviceEntry;
-      updateDeviceRecord(deviceHash, { paid: true, paymentDate: new Date().toISOString() });
-    }
-  }
-
-  res.status(200).json({ received: true });
+  }catch(e){ console.warn('webhook parse', e.message); }
+  res.status(200).send('ok');
 });
 
-app.post('/upload', upload.single('image'), async (req, res) => {
-  const { fingerprint, email, adminKey } = req.body;
-  const ip = getClientIp(req);
-  const deviceHash = createDeviceHash(ip, fingerprint || 'unknown');
-  const record = getDeviceRecord(deviceHash) || {};
-
-  if (isAdmin(req)) {
-    updateDeviceRecord(deviceHash, { admin: true, paid: true, email: (email || '').toLowerCase(), fingerprint: fingerprint || 'unknown', ip, firstAccessDate: record.firstAccessDate || new Date().toISOString() });
-  }
-
-  const currentRecord = getDeviceRecord(deviceHash);
-  const status = trialStatusFor(currentRecord);
-
-  if (status.state === 'expired') {
-    return res.status(403).json({ error: 'Your 3-day trial has expired. Please pay to continue.' });
-  }
-
-  if (!currentRecord || !currentRecord.firstAccessDate) {
-    updateDeviceRecord(deviceHash, {
-      firstAccessDate: new Date().toISOString(),
-      email: (email || '').toLowerCase(),
-      fingerprint: fingerprint || 'unknown',
-      ip,
-      paid: currentRecord?.paid || false,
-      admin: currentRecord?.admin || false
-    });
-  }
-
-  if (!req.file) {
-    return res.status(400).json({ error: 'Please upload an image file.' });
-  }
-
-  const imageUrl = `${req.protocol}://${req.get('host')}/image/${encodeURIComponent(req.file.filename)}`;
-  const qrDataUrl = await QRCode.toDataURL(imageUrl, { margin: 2, width: 300 });
-
-  updateDeviceRecord(deviceHash, { lastSeen: new Date().toISOString() });
-
-  res.json({
-    imageUrl,
-    qrDataUrl,
-    fileName: req.file.filename,
-    status
-  });
+// mock pay route for local testing
+app.get('/mock-pay', (req,res)=>{
+  const { ref, device } = req.query; if(!ref || !device) return res.status(400).send('missing'); updateDevice(String(device), { paid:true, paymentDate: new Date().toISOString() }); res.send(`<html><body><h3>Mock payment complete</h3><p>ref=${ref}</p><p>device=${device}</p><p><a href="/">Return</a></p></body></html>`);
 });
 
-app.use((err, req, res, next) => {
-  res.status(400).json({ error: err.message || 'Upload failed' });
+// serve uploaded images
+app.get('/image/:name', (req,res)=>{ const file = path.join(uploadsDir, req.params.name); if(!fs.existsSync(file)) return res.status(404).send('not found'); res.sendFile(file); });
+
+// upload endpoint
+app.post('/upload', upload.single('file'), async (req,res,next)=>{
+  try{
+    const fingerprint = req.body.fingerprint || 'unknown'; const email = (req.body.email||'').toLowerCase(); const ip = getClientIp(req); const deviceHash = createDeviceHash(ip, fingerprint); if(isAdminBypass(req)) updateDevice(deviceHash, { admin:true, paid:true, firstAccessDate: new Date().toISOString(), email, fingerprint, ip });
+    const rec = getDevice(deviceHash) || {};
+    const status = trialStatusFor(rec);
+    if(status.state === 'expired' && !rec.paid && !rec.admin) return res.status(402).send('trial expired');
+    if(!req.file) return res.status(400).send('no file');
+    const imageUrl = `${req.protocol}://${req.get('host')}/image/${encodeURIComponent(req.file.filename)}`;
+    const qrDataUrl = await QRCode.toDataURL(imageUrl, { margin:2, width:300 });
+    updateDevice(deviceHash, { lastSeen: new Date().toISOString() });
+    return res.json({ imageUrl, qrDataUrl, fileName: req.file.filename, status });
+  }catch(err){ next(err); }
 });
+
+app.use((err,req,res,next)=>{ console.error('err', err && err.message); res.status(500).json({ error: err && err.message || 'server error' }); });
+
+app.listen(PORT, ()=>{ console.log(`WebCode listening on ${PORT}`); });
 
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
