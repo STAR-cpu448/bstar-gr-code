@@ -1,43 +1,92 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>WEBCODE — Fresh</title>
-  <link rel="stylesheet" href="/styles.css">
-  <meta name="theme-color" content="#071226">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>QX QR Code Generator</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <meta name="theme-color" content="#06101f" />
 </head>
 <body>
-  <div class="stage">
-    <div class="card">
-      <div class="brand"><h1>WEBCODE</h1><p class="lead">Image → QR · 3-day free trial</p></div>
-      <form id="uploadForm" class="form">
-        <label class="field"><span class="label">Image</span><input type="file" name="file" accept="image/*" required></label>
-        <div class="row"><label class="field small"><span class="label">Email</span><input name="email" type="email"></label><label class="field small"><span class="label">Phone</span><input name="phone" type="tel"></label></div>
-        <label class="field"><span class="label">Admin key (optional)</span><input name="adminKey" type="text"></label>
-        <div class="actions"><button id="startTrial" type="button" class="pill ghost">Start 3-day Trial</button><button id="uploadBtn" type="submit" class="pill primary">Generate QR</button></div>
-        <p id="status" class="status">Checking access…</p>
-      </form>
-      <div id="preview" class="preview hidden"><h3>QR Preview</h3><img id="qrImg"><a id="downloadLink" class="pill ghost" download>Download</a></div>
-    </div>
-  </div>
+  <main class="page-shell">
+    <section class="card">
+      <div class="header-copy">
+        <p class="eyebrow">QX QR Code Generator</p>
+        <h1>Upload an image and generate a shareable QR code.</h1>
+        <p class="subtitle">A sleek glassmorphism workspace with a 3-day free trial and KSh 99 unlock flow.</p>
+      </div>
 
-  <!-- Payment modal (hidden until trial expires) -->
+      <form id="uploadForm" class="form-grid">
+        <label class="field">
+          <span class="field-label">Image</span>
+          <input type="file" name="file" accept="image/*" required />
+        </label>
+
+        <label class="field">
+          <span class="field-label">Email</span>
+          <input type="email" name="email" placeholder="you@example.com" />
+        </label>
+
+        <label class="field">
+          <span class="field-label">Phone</span>
+          <input type="tel" name="phone" placeholder="0744 000 000" />
+        </label>
+
+        <label class="field">
+          <span class="field-label">Admin key <span class="optional">(optional)</span></span>
+          <input type="text" name="adminKey" placeholder="Admin bypass key" />
+        </label>
+
+        <div class="button-row">
+          <button id="startTrial" type="button" class="pill button-secondary">Start 3-Day Trial</button>
+          <button id="uploadBtn" type="submit" class="pill button-primary">Generate QR</button>
+        </div>
+
+        <p id="status" class="status-copy">Checking access…</p>
+      </form>
+
+      <section id="preview" class="preview hidden">
+        <div class="preview-header">
+          <div>
+            <h2>QR Preview</h2>
+            <p class="preview-note">Your generated QR will appear here once upload completes.</p>
+          </div>
+          <a id="downloadLink" class="pill button-secondary" download="qrcode.png">Download</a>
+        </div>
+        <img id="qrImg" alt="Generated QR code" />
+      </section>
+    </section>
+  </main>
+
   <div id="payModal" class="modal-overlay hidden" role="dialog" aria-hidden="true">
     <div class="modal-sheet">
-      <h3>Unlock WEBCODE — Permanent Access</h3>
-      <p>3-day trial expired. Pay KSh 99 to unlock permanent access for this device. You can pay with M-Pesa (STK) or card.</p>
+      <div class="modal-copy">
+        <p class="eyebrow">Payment required</p>
+        <h2>Unlock permanent access</h2>
+        <p>Pay KSh 99 to keep your QR accessible online after the trial. Use M-Pesa or card to complete the checkout.</p>
+      </div>
       <div class="modal-actions">
-        <button id="payCancel" class="pill ghost">Cancel</button>
-        <button id="payConfirm" class="pill primary">Pay KSh 99</button>
+        <button id="payCancel" class="pill button-secondary">Not now</button>
+        <button id="payConfirm" class="pill button-primary">Pay KSh 99</button>
       </div>
     </div>
   </div>
 
   <script>
-    const fingerprint = (localStorage.getItem('webcodeFingerprint') || crypto.randomUUID()); localStorage.setItem('webcodeFingerprint', fingerprint);
-    async function getStatus(){ try{ const res = await fetch(`/api/trial/status?fingerprint=${encodeURIComponent(fingerprint)}`); return await res.json(); }catch(e){return {state:'unknown'} } }
-    document.addEventListener('DOMContentLoaded', ()=>{
+    const fingerprint = localStorage.getItem('webcodeFingerprint') || crypto.randomUUID();
+    localStorage.setItem('webcodeFingerprint', fingerprint);
+
+    async function getStatus(params = {}) {
+      const query = new URLSearchParams({ fingerprint, ...params });
+      try {
+        const response = await fetch(/api/trial/status?);
+        return await response.json();
+      } catch {
+        return { state: 'unknown' };
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
       const form = document.getElementById('uploadForm');
       const statusEl = document.getElementById('status');
       const preview = document.getElementById('preview');
@@ -47,45 +96,91 @@
       const payConfirm = document.getElementById('payConfirm');
       const payCancel = document.getElementById('payCancel');
 
-      async function refreshStatus(){
-        const email = form.email.value || '';
-        const phone = form.phone.value || '';
-        const adminKey = form.adminKey.value || '';
-        const res = await fetch(`/api/trial/status?fingerprint=${encodeURIComponent(fingerprint)}&email=${encodeURIComponent(email)}&phone=${encodeURIComponent(phone)}&adminKey=${encodeURIComponent(adminKey)}`);
-        return res.json();
+      const getFormValues = () => ({
+        email: form.email.value.trim(),
+        phone: form.phone.value.trim(),
+        adminKey: form.adminKey.value.trim()
+      });
+
+      async function refreshStatus() {
+        const values = getFormValues();
+        const status = await getStatus(values);
+        if (status.paid) {
+          statusEl.textContent = 'Paid access enabled';
+          statusEl.classList.remove('warning');
+        } else if (status.state === 'trial') {
+          statusEl.textContent = Trial active —  day(s) left;
+          statusEl.classList.remove('warning');
+        } else if (status.state === 'expired') {
+          statusEl.textContent = 'Trial expired — payment required';
+          statusEl.classList.add('warning');
+          payModal.classList.remove('hidden');
+          payModal.setAttribute('aria-hidden', 'false');
+        } else {
+          statusEl.textContent = 'No active trial';
+          statusEl.classList.remove('warning');
+        }
       }
 
-      document.getElementById('startTrial').addEventListener('click', async ()=>{
-        const email = form.email.value||''; const phone = form.phone.value||''; const adminKey = form.adminKey.value||'';
-        await fetch('/api/trial/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fingerprint,email,phone,adminKey})});
-        alert('Trial started'); statusEl.textContent='Trial started';
+      document.getElementById('startTrial').addEventListener('click', async () => {
+        const values = getFormValues();
+        await fetch('/api/trial/start', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fingerprint, ...values })
+        });
+        await refreshStatus();
       });
 
-      form.addEventListener('submit', async (e)=>{
-        e.preventDefault();
-        const fd = new FormData(form); fd.append('fingerprint', fingerprint);
-        const res = await fetch('/upload',{method:'POST',body:fd});
-        if(res.status===200){ const j=await res.json(); qrImg.src = j.qrDataUrl; downloadLink.href = j.qrDataUrl; preview.classList.remove('hidden'); }
-        else if(res.status===402 || res.status===403){
-          // trial expired or locked — show payment modal
-          payModal.classList.remove('hidden'); payModal.setAttribute('aria-hidden','false');
-        } else { alert('Upload failed'); }
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const data = new FormData(form);
+        data.append('fingerprint', fingerprint);
+        const response = await fetch('/upload', { method: 'POST', body: data });
+        if (response.ok) {
+          const payload = await response.json();
+          qrImg.src = payload.qrDataUrl;
+          downloadLink.href = payload.qrDataUrl;
+          preview.classList.remove('hidden');
+          statusEl.classList.remove('warning');
+        } else if (response.status === 402 || response.status === 403) {
+          payModal.classList.remove('hidden');
+          payModal.setAttribute('aria-hidden', 'false');
+        } else {
+          statusEl.textContent = 'Upload failed. Please try again.';
+          statusEl.classList.add('warning');
+        }
       });
 
-      payConfirm.addEventListener('click', async ()=>{
-        const email = form.email.value||''; const phone = form.phone.value||''; const adminKey = form.adminKey.value||'';
-        const r = await fetch('/api/payments/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fingerprint,email,phone,adminKey,amount:9900})});
-        const j = await r.json();
-        if(j.authorization_url){ window.open(j.authorization_url,'_blank'); }
-        payModal.classList.add('hidden'); payModal.setAttribute('aria-hidden','true');
-        // poll for payment
-        const poll = setInterval(async ()=>{ const s = await refreshStatus(); if(s.paid){ clearInterval(poll); alert('Payment confirmed — access unlocked'); } }, 3000);
+      payConfirm.addEventListener('click', async () => {
+        const values = getFormValues();
+        const response = await fetch('/api/payments/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ fingerprint, amount: 9900, ...values })
+        });
+        const payload = await response.json();
+        if (payload.authorization_url) {
+          window.open(payload.authorization_url, '_blank');
+          payModal.classList.add('hidden');
+          payModal.setAttribute('aria-hidden', 'true');
+          const poll = setInterval(async () => {
+            const status = await getStatus(values);
+            if (status.paid) {
+              clearInterval(poll);
+              statusEl.textContent = 'Payment confirmed — access unlocked';
+              statusEl.classList.remove('warning');
+            }
+          }, 3000);
+        }
       });
 
-      payCancel.addEventListener('click', ()=>{ payModal.classList.add('hidden'); payModal.setAttribute('aria-hidden','true'); });
+      payCancel.addEventListener('click', () => {
+        payModal.classList.add('hidden');
+        payModal.setAttribute('aria-hidden', 'true');
+      });
 
-      // initial check
-      refreshStatus().then(s=>{ if(s.paid) statusEl.textContent='Paid'; else if(s.state==='trial') statusEl.textContent = `Trial: ${s.daysLeft || 3} day(s)`; else if(s.state==='expired') { statusEl.textContent='Trial expired'; payModal.classList.remove('hidden'); payModal.setAttribute('aria-hidden','false'); } else statusEl.textContent='No active trial'; });
+      refreshStatus();
     });
   </script>
 </body>
