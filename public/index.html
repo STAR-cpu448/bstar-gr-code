@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>WEBCODE — Fresh</title>
+  <link rel="stylesheet" href="/styles.css">
+  <meta name="theme-color" content="#071226">
+</head>
+<body>
+  <div class="stage">
+    <div class="card">
+      <div class="brand"><h1>WEBCODE</h1><p class="lead">Image → QR · 3-day free trial</p></div>
+      <form id="uploadForm" class="form">
+        <label class="field"><span class="label">Image</span><input type="file" name="file" accept="image/*" required></label>
+        <div class="row"><label class="field small"><span class="label">Email</span><input name="email" type="email"></label><label class="field small"><span class="label">Phone</span><input name="phone" type="tel"></label></div>
+        <label class="field"><span class="label">Admin key (optional)</span><input name="adminKey" type="text"></label>
+        <div class="actions"><button id="startTrial" type="button" class="pill ghost">Start 3-day Trial</button><button id="uploadBtn" type="submit" class="pill primary">Generate QR</button></div>
+        <p id="status" class="status">Checking access…</p>
+      </form>
+      <div id="preview" class="preview hidden"><h3>QR Preview</h3><img id="qrImg"><a id="downloadLink" class="pill ghost" download>Download</a></div>
+    </div>
+  </div>
+
+  <script>
+    const fingerprint = (localStorage.getItem('webcodeFingerprint') || crypto.randomUUID()); localStorage.setItem('webcodeFingerprint', fingerprint);
+    async function getStatus(){ try{ const res = await fetch(`/api/trial/status?fingerprint=${encodeURIComponent(fingerprint)}`); return await res.json(); }catch(e){return {state:'unknown'} } }
+    document.addEventListener('DOMContentLoaded', ()=>{
+      const form = document.getElementById('uploadForm'); const statusEl = document.getElementById('status'); const preview = document.getElementById('preview'); const qrImg = document.getElementById('qrImg'); const downloadLink = document.getElementById('downloadLink');
+      document.getElementById('startTrial').addEventListener('click', async ()=>{ const email = form.email.value||''; const phone = form.phone.value||''; await fetch('/api/trial/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fingerprint,email,phone})}); alert('Trial started'); statusEl.textContent='Trial started'; });
+      form.addEventListener('submit', async (e)=>{ e.preventDefault(); const fd = new FormData(form); fd.append('fingerprint', fingerprint); const res = await fetch('/upload',{method:'POST',body:fd}); if(res.status===200){ const j=await res.json(); qrImg.src = j.qrDataUrl; downloadLink.href = j.qrDataUrl; preview.classList.remove('hidden'); } else if(res.status===402||res.status===403){ alert('Payment required or trial expired'); } else { alert('Upload failed'); } });
+      getStatus().then(s=>{ if(s.paid) statusEl.textContent='Paid'; else if(s.state==='trial') statusEl.textContent = `Trial: ${s.daysLeft || 3} day(s)`; else statusEl.textContent='No active trial'; });
+    });
+  </script>
+</body>
+</html>

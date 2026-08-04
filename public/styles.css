@@ -1,0 +1,14 @@
+:root{ --accent:#5ac8fa; --accent-2:#8e7bff; }
+*{box-sizing:border-box} html,body{height:100%} body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",Roboto,Arial;color:#eaf6f7;background:linear-gradient(180deg,#071226,#071b2a);-webkit-font-smoothing:antialiased;padding:40px}
+.stage{display:flex;align-items:center;justify-content:center;min-height:80vh}
+.card{width:100%;max-width:780px;padding:28px;border-radius:20px;background:linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.02));border:1px solid rgba(255,255,255,0.06);backdrop-filter:blur(20px) saturate(120%);box-shadow:0 20px 60px rgba(2,6,23,0.6)}
+.brand h1{margin:0;font-size:26px;color:white;letter-spacing:1px}.lead{margin:6px 0 18px;color:rgba(255,255,255,0.75)}
+.form{display:flex;flex-direction:column;gap:12px}.field{display:flex;flex-direction:column;gap:8px}.label{font-size:12px;color:rgba(255,255,255,0.8)}
+input[type=file],input[type=text],input[type=email],input[type=tel]{padding:12px;border-radius:12px;background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.04);color:#eaf6f7}
+.row{display:flex;gap:12px}.small{flex:1}
+.actions{display:flex;gap:12px;margin-top:6px}.pill{padding:10px 16px;border-radius:999px;border:none;cursor:pointer;font-weight:700}
+.pill.primary{background:linear-gradient(90deg,var(--accent),var(--accent-2));color:#062027}.pill.ghost{background:transparent;color:#eaf6f7;border:1px solid rgba(255,255,255,0.04)}
+.status{margin-top:10px;color:rgba(255,255,255,0.75)}.preview{margin-top:18px;text-align:center}.preview img{max-width:260px;border-radius:14px;background:white;padding:8px}
+.hidden{display:none}
+
+@media (max-width:640px){ .card{padding:18px} .brand h1{font-size:20px} .row{flex-direction:column} }

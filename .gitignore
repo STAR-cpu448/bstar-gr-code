@@ -1,0 +1,5 @@
+node_modules/
+.env
+webcode-records.json
+uploads/
+*.log
