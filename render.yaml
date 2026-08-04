@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: webcode
+    name: "QX QR Code Generator"
     env: node
     plan: free
     buildCommand: "npm install"
@@ -14,3 +14,27 @@ services:
         value: ""
       - key: ADMIN_BYPASS_KEY
         value: ""
+      - key: DATABASE_URL
+        value: ""
+      - key: REDIS_URL
+        value: ""
+      - key: INTASEND_KEY
+        value: ""
+      - key: INTASEND_STK_URL
+        value: ""
+      - key: SAFARICOM_CONSUMER_KEY
+        value: ""
+      - key: SAFARICOM_CONSUMER_SECRET
+        value: ""
+      - key: SAFARICOM_SHORTCODE
+        value: ""
+      - key: SAFARICOM_PASSKEY
+        value: ""
+      - key: STK_CALLBACK_URL
+        value: ""
+      - key: SAFARICOM_OAUTH_URL
+        value: ""
+      - key: SAFARICOM_STK_URL
+        value: ""
+      - key: NODE_ENV
+        value: "production"
