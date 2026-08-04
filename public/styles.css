@@ -12,3 +12,10 @@ input[type=file],input[type=text],input[type=email],input[type=tel]{padding:12px
 .hidden{display:none}
 
 @media (max-width:640px){ .card{padding:18px} .brand h1{font-size:20px} .row{flex-direction:column} }
+
+/* Payment modal - Apple frosted glass */
+.modal-overlay{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(2,6,23,0.55); z-index:80 }
+.modal-sheet{ width:min(520px,94%); border-radius:20px; padding:22px; background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border:1px solid rgba(255,255,255,0.06); backdrop-filter: blur(20px) saturate(140%); box-shadow:0 30px 80px rgba(2,6,23,0.6); }
+.modal-sheet h3{ margin:0 0 8px; color:white }
+.modal-sheet p{ margin:0 0 12px; color:rgba(255,255,255,0.78) }
+.modal-actions{ display:flex; gap:12px; justify-content:flex-end; margin-top:12px }

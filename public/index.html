@@ -22,14 +22,70 @@
     </div>
   </div>
 
+  <!-- Payment modal (hidden until trial expires) -->
+  <div id="payModal" class="modal-overlay hidden" role="dialog" aria-hidden="true">
+    <div class="modal-sheet">
+      <h3>Unlock WEBCODE — Permanent Access</h3>
+      <p>3-day trial expired. Pay KSh 99 to unlock permanent access for this device. You can pay with M-Pesa (STK) or card.</p>
+      <div class="modal-actions">
+        <button id="payCancel" class="pill ghost">Cancel</button>
+        <button id="payConfirm" class="pill primary">Pay KSh 99</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const fingerprint = (localStorage.getItem('webcodeFingerprint') || crypto.randomUUID()); localStorage.setItem('webcodeFingerprint', fingerprint);
     async function getStatus(){ try{ const res = await fetch(`/api/trial/status?fingerprint=${encodeURIComponent(fingerprint)}`); return await res.json(); }catch(e){return {state:'unknown'} } }
     document.addEventListener('DOMContentLoaded', ()=>{
-      const form = document.getElementById('uploadForm'); const statusEl = document.getElementById('status'); const preview = document.getElementById('preview'); const qrImg = document.getElementById('qrImg'); const downloadLink = document.getElementById('downloadLink');
-      document.getElementById('startTrial').addEventListener('click', async ()=>{ const email = form.email.value||''; const phone = form.phone.value||''; await fetch('/api/trial/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fingerprint,email,phone})}); alert('Trial started'); statusEl.textContent='Trial started'; });
-      form.addEventListener('submit', async (e)=>{ e.preventDefault(); const fd = new FormData(form); fd.append('fingerprint', fingerprint); const res = await fetch('/upload',{method:'POST',body:fd}); if(res.status===200){ const j=await res.json(); qrImg.src = j.qrDataUrl; downloadLink.href = j.qrDataUrl; preview.classList.remove('hidden'); } else if(res.status===402||res.status===403){ alert('Payment required or trial expired'); } else { alert('Upload failed'); } });
-      getStatus().then(s=>{ if(s.paid) statusEl.textContent='Paid'; else if(s.state==='trial') statusEl.textContent = `Trial: ${s.daysLeft || 3} day(s)`; else statusEl.textContent='No active trial'; });
+      const form = document.getElementById('uploadForm');
+      const statusEl = document.getElementById('status');
+      const preview = document.getElementById('preview');
+      const qrImg = document.getElementById('qrImg');
+      const downloadLink = document.getElementById('downloadLink');
+      const payModal = document.getElementById('payModal');
+      const payConfirm = document.getElementById('payConfirm');
+      const payCancel = document.getElementById('payCancel');
+
+      async function refreshStatus(){
+        const email = form.email.value || '';
+        const phone = form.phone.value || '';
+        const adminKey = form.adminKey.value || '';
+        const res = await fetch(`/api/trial/status?fingerprint=${encodeURIComponent(fingerprint)}&email=${encodeURIComponent(email)}&phone=${encodeURIComponent(phone)}&adminKey=${encodeURIComponent(adminKey)}`);
+        return res.json();
+      }
+
+      document.getElementById('startTrial').addEventListener('click', async ()=>{
+        const email = form.email.value||''; const phone = form.phone.value||''; const adminKey = form.adminKey.value||'';
+        await fetch('/api/trial/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fingerprint,email,phone,adminKey})});
+        alert('Trial started'); statusEl.textContent='Trial started';
+      });
+
+      form.addEventListener('submit', async (e)=>{
+        e.preventDefault();
+        const fd = new FormData(form); fd.append('fingerprint', fingerprint);
+        const res = await fetch('/upload',{method:'POST',body:fd});
+        if(res.status===200){ const j=await res.json(); qrImg.src = j.qrDataUrl; downloadLink.href = j.qrDataUrl; preview.classList.remove('hidden'); }
+        else if(res.status===402 || res.status===403){
+          // trial expired or locked — show payment modal
+          payModal.classList.remove('hidden'); payModal.setAttribute('aria-hidden','false');
+        } else { alert('Upload failed'); }
+      });
+
+      payConfirm.addEventListener('click', async ()=>{
+        const email = form.email.value||''; const phone = form.phone.value||''; const adminKey = form.adminKey.value||'';
+        const r = await fetch('/api/payments/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({fingerprint,email,phone,adminKey,amount:9900})});
+        const j = await r.json();
+        if(j.authorization_url){ window.open(j.authorization_url,'_blank'); }
+        payModal.classList.add('hidden'); payModal.setAttribute('aria-hidden','true');
+        // poll for payment
+        const poll = setInterval(async ()=>{ const s = await refreshStatus(); if(s.paid){ clearInterval(poll); alert('Payment confirmed — access unlocked'); } }, 3000);
+      });
+
+      payCancel.addEventListener('click', ()=>{ payModal.classList.add('hidden'); payModal.setAttribute('aria-hidden','true'); });
+
+      // initial check
+      refreshStatus().then(s=>{ if(s.paid) statusEl.textContent='Paid'; else if(s.state==='trial') statusEl.textContent = `Trial: ${s.daysLeft || 3} day(s)`; else if(s.state==='expired') { statusEl.textContent='Trial expired'; payModal.classList.remove('hidden'); payModal.setAttribute('aria-hidden','false'); } else statusEl.textContent='No active trial'; });
     });
   </script>
 </body>

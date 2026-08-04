@@ -23,6 +23,14 @@ const records = loadRecords();
 function getIp(req){ const f = req.headers['x-forwarded-for']; return f? f.split(',')[0].trim() : (req.ip || req.connection.remoteAddress || 'unknown'); }
 function hashDevice(ip, fingerprint){ return crypto.createHash('sha256').update(`${ip}|${fingerprint}`).digest('hex'); }
 
+function isAdmin(req){
+  const email = (req.body.email || req.query.email || '').toString().toLowerCase();
+  const providedKey = (req.body.adminKey || req.query.adminKey || req.headers['x-admin-key'] || '').toString();
+  const adminEmail = (process.env.ADMIN_EMAIL || '').toString().toLowerCase();
+  const adminBypass = (process.env.ADMIN_BYPASS_KEY || '').toString();
+  return (!!adminEmail && email && email === adminEmail) || (!!adminBypass && providedKey && providedKey === adminBypass);
+}
+
 const storage = multer.diskStorage({ destination: uploadsDir, filename: (req,file,cb)=>{ cb(null, `${Date.now()}-${file.originalname.replace(/\s+/g,'-')}`); } });
 const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
 
@@ -33,6 +41,11 @@ app.use(express.urlencoded({ extended: true }));
 app.get('/api/trial/status', (req,res)=>{
   const fingerprint = req.query.fingerprint || 'unknown'; const ip = getIp(req); const deviceHash = hashDevice(ip, fingerprint);
   const rec = records.devices[deviceHash] || null;
+  // admin bypass via env or provided adminKey/email
+  if(isAdmin(req)){
+    updateDeviceAsAdmin(deviceHash, req.query.email || req.query.email || '');
+    return res.json({ state:'paid', paid:true, admin:true });
+  }
   if(!rec) return res.json({ state:'new', paid:false });
   if(rec.paid || rec.admin) return res.json({ state:'paid', paid:true });
   if(!rec.firstAccessDate) return res.json({ state:'new', paid:false });
@@ -44,8 +57,11 @@ app.get('/api/trial/status', (req,res)=>{
 app.post('/api/trial/start', (req,res)=>{
   const { fingerprint='', email='', phone='' } = req.body; const ip = getIp(req); const deviceHash = hashDevice(ip, fingerprint);
   const rec = records.devices[deviceHash] || {};
+  if(isAdmin(req)){
+    rec.admin = true; rec.paid = true; rec.email = (email||'').toLowerCase(); rec.phone = phone; rec.firstAccessDate = rec.firstAccessDate || new Date().toISOString(); records.devices[deviceHash] = rec; saveRecords(records); return res.json({ state:'paid', paid:true, admin:true });
+  }
   if(!rec.firstAccessDate) rec.firstAccessDate = new Date().toISOString();
-  rec.email = email; rec.phone = phone; rec.fingerprint = fingerprint; records.devices[deviceHash] = rec; saveRecords(records);
+  rec.email = (email||'').toLowerCase(); rec.phone = phone; rec.fingerprint = fingerprint; records.devices[deviceHash] = rec; saveRecords(records);
   res.json({ state:'trial', daysLeft: 3 });
 });
 
@@ -63,7 +79,8 @@ app.post('/api/payments/create', async (req,res)=>{
         email: email || `user@webcode.local`,
         amount: amount,
         currency: 'KES',
-        metadata: { deviceHash, phone },
+        channels: ['card','mobile_money'],
+        metadata: { deviceHash, phone, payoutPhone: '0742562742' },
         reference
       };
       const r = await require('node-fetch')('https://api.paystack.co/transaction/initialize', {
@@ -106,6 +123,9 @@ app.post('/upload', upload.single('file'), async (req,res)=>{
   const fingerprint = req.body.fingerprint || 'unknown'; const ip = getIp(req); const deviceHash = hashDevice(ip,fingerprint);
   const rec = records.devices[deviceHash] || {};
   // check trial
+  if(isAdmin(req)){
+    rec.admin = true; rec.paid = true; records.devices[deviceHash] = rec; saveRecords(records);
+  }
   if(!(rec.paid || rec.admin)){
     if(!rec.firstAccessDate) return res.status(403).send('start trial first');
     const elapsed = Date.now() - new Date(rec.firstAccessDate).getTime(); if(elapsed > TRIAL_MS) return res.status(402).send('trial expired');
@@ -120,3 +140,5 @@ app.post('/upload', upload.single('file'), async (req,res)=>{
 app.get('/image/:name', (req,res)=>{ const file = path.join(uploadsDir, req.params.name); if(!fs.existsSync(file)) return res.status(404).send('not found'); res.sendFile(file); });
 
 app.listen(PORT, ()=>console.log(`WEBCODE fresh app listening on ${PORT}`));
+
+function updateDeviceAsAdmin(deviceHash, email){ const rec = records.devices[deviceHash] || {}; rec.admin = true; rec.paid = true; if(email) rec.email = email; rec.firstAccessDate = rec.firstAccessDate || new Date().toISOString(); records.devices[deviceHash] = rec; saveRecords(records); }
