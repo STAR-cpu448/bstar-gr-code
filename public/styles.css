@@ -47,3 +47,35 @@ input[type="text"], input[type="email"], input[type="tel"], input[type="file"]{ 
 .app-footer{ margin-top:28px; color:rgba(255,255,255,0.55); font-size:12px; text-align:center }
 
 @media (max-width:640px){ .preview img{width:160px;height:160px} .app-shell{padding:0 12px} }
+
+/* New clean Apple glass layout */
+.stage{ display:flex; align-items:center; justify-content:center; min-height:80vh; }
+.card{ width:100%; max-width:760px; border-radius:20px; padding:28px; background:linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.02)); border:1px solid rgba(255,255,255,0.06); box-shadow: 0 20px 60px rgba(2,6,23,0.6); backdrop-filter: blur(20px) saturate(120%); }
+.brand h1{ margin:0; font-size:28px; color:white; letter-spacing:1px; }
+.brand .lead{ margin:6px 0 18px; color:rgba(255,255,255,0.75); }
+
+.form{ display:flex; flex-direction:column; gap:12px }
+.field{ display:flex; flex-direction:column; gap:8px }
+.field .label{ font-size:12px; color:rgba(255,255,255,0.8) }
+input[type="file"], input[type="text"], input[type="email"], input[type="tel"]{ padding:12px 14px; border-radius:12px; background:rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.04); color:var(--muted); outline:none }
+.row{ display:flex; gap:12px }
+.small{ flex:1 }
+
+.actions{ display:flex; gap:12px; align-items:center }
+.pill{ padding:10px 16px; border-radius:999px; cursor:pointer; border:none; font-weight:700 }
+.pill.primary{ background:linear-gradient(90deg,var(--accent),var(--accent-2)); color:#062027 }
+.pill.ghost{ background:transparent; color:var(--muted); border:1px solid rgba(255,255,255,0.04) }
+
+.status{ margin-top:10px; color:rgba(255,255,255,0.75); font-size:13px }
+.preview{ margin-top:18px; text-align:center }
+.preview img{ max-width:260px; border-radius:14px; background:white; padding:8px }
+
+.hidden{ display:none }
+
+.modal{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background: rgba(2,6,23,0.6); z-index:60 }
+.modal.hidden{ display:none }
+.modal-card{ width:min(480px,94%); background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); padding:22px; border-radius:16px; border:1px solid rgba(255,255,255,0.06); backdrop-filter: blur(16px); }
+.modal .muted{ color:rgba(255,255,255,0.7) }
+.modal-actions{ display:flex; gap:12px; margin-top:14px }
+
+@media (max-width:640px){ .card{ padding:18px } .brand h1{ font-size:20px } }
