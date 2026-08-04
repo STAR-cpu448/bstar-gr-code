@@ -1,3 +1,4 @@
+// WEBCODE: Apple UI + 3-day device/IP trial paywall implementation
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
