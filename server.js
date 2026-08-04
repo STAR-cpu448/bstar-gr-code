@@ -48,12 +48,53 @@ app.post('/api/trial/start', (req,res)=>{
   res.json({ state:'trial', daysLeft: 3 });
 });
 
-app.post('/api/payments/create', (req,res)=>{
-  // Placeholder: return mock url for testing
-  const { fingerprint='' } = req.body; const ip = getIp(req); const deviceHash = hashDevice(ip,fingerprint);
-  const ref = `WEBCODE-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
-  const rec = records.devices[deviceHash] || {}; rec.reference = ref; records.devices[deviceHash] = rec; saveRecords(records);
-  res.json({ authorization_url: `/mock-pay?ref=${ref}&device=${deviceHash}`, reference: ref });
+app.post('/api/payments/create', async (req,res)=>{
+  const { fingerprint='', email='', phone='', amount=9900 } = req.body; const ip = getIp(req); const deviceHash = hashDevice(ip,fingerprint);
+  const rec = records.devices[deviceHash] || {};
+  if(rec.paid || rec.admin) return res.json({ paid:true, message:'already unlocked' });
+
+  const paystackSecret = process.env.PAYSTACK_SECRET;
+  const reference = `WEBCODE-${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+
+  if(paystackSecret){
+    try{
+      const payload = {
+        email: email || `user@webcode.local`,
+        amount: amount,
+        currency: 'KES',
+        metadata: { deviceHash, phone },
+        reference
+      };
+      const r = await require('node-fetch')('https://api.paystack.co/transaction/initialize', {
+        method: 'POST', headers: { Authorization: `Bearer ${paystackSecret}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+      });
+      const j = await r.json();
+      if(!r.ok) return res.status(500).json({ error: j.message || 'init failed', details: j });
+      rec.reference = j.data.reference || reference; records.devices[deviceHash] = rec; saveRecords(records);
+      return res.json({ authorization_url: j.data.authorization_url, reference: j.data.reference });
+    }catch(err){ return res.status(500).json({ error: err.message }); }
+  }
+
+  // fallback: mock url
+  rec.reference = reference; records.devices[deviceHash] = rec; saveRecords(records);
+  res.json({ authorization_url: `/mock-pay?ref=${reference}&device=${deviceHash}`, reference });
+});
+
+// Paystack webhook: validate signature and mark device paid
+app.post('/api/payments/webhook', express.raw({ type: 'application/json' }), (req,res)=>{
+  const secret = process.env.PAYSTACK_SECRET || '';
+  const sig = req.headers['x-paystack-signature'];
+  if(secret && sig){ const expected = crypto.createHmac('sha512', secret).update(req.body).digest('hex'); if(expected !== sig) return res.status(401).send('invalid signature'); }
+  try{
+    const payload = JSON.parse(req.body.toString('utf8'));
+    const event = payload.event; const data = payload.data;
+    if(event === 'charge.success' && data && data.reference){
+      const ref = data.reference;
+      const entry = Object.entries(records.devices).find(([,r]) => r.reference === ref);
+      if(entry){ const [deviceHash] = entry; records.devices[deviceHash].paid = true; records.devices[deviceHash].paymentDate = new Date().toISOString(); saveRecords(records); }
+    }
+  }catch(e){ console.warn('webhook parse error', e.message); }
+  res.status(200).send('ok');
 });
 
 app.get('/mock-pay', (req,res)=>{
