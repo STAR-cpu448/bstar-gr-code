@@ -1,0 +1,16 @@
+services:
+  - type: web
+    name: webcode
+    env: node
+    plan: free
+    buildCommand: "npm install"
+    startCommand: "npm start"
+    envVars:
+      - key: PAYSTACK_SECRET
+        value: ""
+      - key: PAYSTACK_PUBLIC_KEY
+        value: ""
+      - key: ADMIN_EMAIL
+        value: ""
+      - key: ADMIN_BYPASS_KEY
+        value: ""
